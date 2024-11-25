@@ -15,7 +15,7 @@ def run_script():
     try:
         # Run the Python script using subprocess
         process = subprocess.Popen(
-            ['python3', '/Users/Kenneth_Baynas/Downloads/source code/main_video.py'], 
+            ['python3', 'main.py'], 
             stdout=subprocess.PIPE, 
             stderr=subprocess.PIPE
         )
@@ -36,7 +36,11 @@ def stop_script():
         if current_processes:
             # Iterate through the list of processes and terminate them
             for process in current_processes:
-                os.kill(process.pid, signal.SIGTERM)
+                try:
+                    os.kill(process.pid, signal.SIGTERM)  # Terminate the process
+                    print(f"Terminated process PID: {process.pid}")
+                except ProcessLookupError:
+                    print(f"Process {process.pid} already terminated.")
             current_processes.clear()  # Clear the list of processes after termination
             return jsonify({'status': 'success', 'message': 'All scripts terminated successfully'})
         else:
@@ -55,7 +59,7 @@ def register_face():
 
         # Run the first registration Python script with the name as an argument
         first_process = subprocess.Popen(
-            ['python3', '/Users/Kenneth_Baynas/Downloads/source code/simple_facereg.py', name], 
+            ['python3', 'simple_facereg.py', name], 
             stdout=subprocess.PIPE, 
             stderr=subprocess.PIPE
         )
@@ -67,7 +71,7 @@ def register_face():
         if first_process.returncode == 0:
             # Run the second Python script
             second_process = subprocess.Popen(
-                ['python3', '/Users/Kenneth_Baynas/Downloads/source code/simple_facereg.py'],
+                ['python3', '/simple_facereg.py'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
@@ -119,4 +123,3 @@ def register_face_simple():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
-s

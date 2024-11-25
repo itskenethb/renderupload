@@ -35,16 +35,17 @@ class SimpleFacerec:
         if conn:
             try:
                 cursor = conn.cursor()
-                # Check if the name already exists in the table
+                # Check if the name already exists in the database
                 cursor.execute("SELECT name FROM face_encodings WHERE name = %s", (name,))
                 existing_name = cursor.fetchone()
-
+                
                 if existing_name:
-                    print("Name already exists. Skipping insertion.")
+                    print(f"Face for {name} already exists. Skipping insertion.")
                 else:
                     query = "INSERT INTO face_encodings (name, encoding) VALUES (%s, %s)"
                     cursor.execute(query, (name, encoding.tobytes()))
                     conn.commit()
+                    print(f"Face encoding for {name} added to the database.")
 
             except Exception as e:
                 print(f"Error inserting encoding: {e}")
@@ -57,6 +58,12 @@ class SimpleFacerec:
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)  # Set a lower resolution for better performance
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         captured = False
+
+        # Check if the name already exists in the images folder (based on name)
+        img_path = os.path.join(self.images_folder, f"{name}.jpg")
+        if os.path.exists(img_path):
+            print(f"Face for {name} already exists. Skipping capture.")
+            return
 
         while not captured:
             ret, frame = cap.read()
@@ -77,13 +84,15 @@ class SimpleFacerec:
                 # Scale back face locations to full size
                 y1, x2, y2, x1 = [int(coord / self.frame_resizing) for coord in face_locations[0]]
 
-                # Save image to /images folder
-                img_path = os.path.join(self.images_folder, f"{name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg")
-                cv2.imwrite(img_path, frame[y1:y2, x1:x2])
+                # Save image to /images folder only if it doesn't exist
+                img_path = os.path.join(self.images_folder, f"{name}.jpg")
+                if not os.path.exists(img_path):
+                    cv2.imwrite(img_path, frame[y1:y2, x1:x2])
+                    print(f"Face image saved at {img_path}")
 
                 # Store encoding in the database
                 self.insert_face_encoding(name, encoding)
-                print(f"Face registered for {name}. Image saved at {img_path}")
+                print(f"Face registered for {name}.")
                 captured = True
 
                 # Display confirmation on screen
@@ -101,6 +110,9 @@ class SimpleFacerec:
 
 # Main registration process
 if __name__ == "__main__":
-    name = sys.argv[1]  # Get the name from command-line argument
-    sfr = SimpleFacerec()
-    sfr.capture_and_register_face(name)
+    if len(sys.argv) > 1:
+        name = sys.argv[1]  # Get the name from command-line argument
+        sfr = SimpleFacerec()
+        sfr.capture_and_register_face(name)
+    else:
+        print("Please provide a name as a command-line argument.")
