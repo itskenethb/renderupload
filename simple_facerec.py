@@ -11,7 +11,7 @@ import cvzone
 
 # Configuration and model loading
 confidence = 0.8
-model = YOLO('/Users/Kenneth_Baynas/Documents/AntiSpoofingDetector-main/models/n_version_1_3.pt')
+model = YOLO('n_version_1_3.pt')
 classNames = ["fake", "real"]
 frame_resizing = 0.25
 
@@ -24,11 +24,10 @@ class SimpleFacerec:
     def connect_db(self):
         try:
             conn = psycopg2.connect(
-                dbname="new_database_name_ar1g",  # Use the database name provided by Render
-                user="new_database_name_ar1g_user",    # Use the username provided by Render
-                password="nQ5D2X3odozk3esvU2ry188rkHNL5pMK",  # Use the password provided by Render
-                host="dpg-ct1u628gph6c73blisog-a",    # Use the host provided by Render
-                port="5432"  # Use the default port for PostgreSQL (5432)
+                dbname="new_database_name",
+                user="Kenneth_Baynas", 
+                password="", 
+                host="localhost"
             )
             return conn
         except Exception as e:
@@ -79,12 +78,15 @@ class SimpleFacerec:
             name = "Unknown"
             face_distances = face_recognition.face_distance(self.known_face_encodings, face_encoding)
 
+            # Print face distances for debugging
+            print(f"Face distances: {face_distances}")
+
             # Find the best match and check the distance
             if len(face_distances) > 0:
                 best_match_index = np.argmin(face_distances)
                 if matches[best_match_index]:
                     # If the distance is within an acceptable threshold, it's considered a match
-                    if face_distances[best_match_index] < 0.6:  # This threshold can be adjusted
+                    if face_distances[best_match_index] < 0.5:  # Lower the threshold
                         name = self.known_face_names[best_match_index]
             face_names.append(name)
         
@@ -98,11 +100,10 @@ def log_recognized_face(name, logged_faces_today):
     if name in logged_faces_today or name == "Unknown":
         return
     conn = psycopg2.connect(
-        dbname="new_database_name_ar1g",  # Use the database name provided by Render
-        user="new_database_name_ar1g_user",    # Use the username provided by Render
-        password="nQ5D2X3odozk3esvU2ry188rkHNL5pMK",  # Use the password provided by Render
-        host="dpg-ct1u628gph6c73blisog-a",    # Use the host provided by Render
-        port="5432"  # Use the default port for PostgreSQL (5432)
+        dbname="new_database_name", 
+        user="Kenneth_Baynas", 
+        password="", 
+        host="localhost"
     )
     cursor = conn.cursor()
     today_date = datetime.now().date()
@@ -127,6 +128,9 @@ cap.set(4, 720)
 sfr = SimpleFacerec()
 sfr.load_encoding_images("images/")  # Folder with encoding images
 logged_faces_today = set()
+
+# Initialize list to track label positions to prevent overlap
+label_positions = []
 
 # Start main loop
 while True:
@@ -161,7 +165,16 @@ while True:
                     # Detect known faces for recognition
                     face_locations, face_names = sfr.detect_known_faces(frame)
                     for face_loc, face_name in zip(face_locations, face_names):
-                        if face_name != "Unknown":
+                        # Adjust label_y_position to avoid overlapping with previous labels
+                        while label_y_position in label_positions:
+                            label_y_position -= 30  # Move the label 30 pixels up until it's free
+                        label_positions.append(label_y_position)
+
+                        # Display "Unknown" for faces not recognized
+                        if face_name == "Unknown":
+                            cv2.putText(frame, "Unknown", (x1, y1 - 10), cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 255), 2)
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 4)
+                        else:
                             log_recognized_face(face_name, logged_faces_today)
                             cv2.putText(frame, face_name, (x1, y1 - 10), cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 200), 2)
                             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 200), 4)
