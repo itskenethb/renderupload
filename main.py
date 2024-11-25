@@ -50,11 +50,13 @@ def log_recognized_face(name, logged_faces_today):
     if name in logged_faces_today or name == "Unknown":
         return
     conn = psycopg2.connect(
-        dbname="new_database_name", 
-        user="Kenneth_Baynas", 
-        password="", 
-        host="localhost"
+        dbname="new_database_name_ar1g",  # Use the database name provided by Render
+        user="new_database_name_ar1g_user",    # Use the username provided by Render
+        password="nQ5D2X3odozk3esvU2ry188rkHNL5pMK",  # Use the password provided by Render
+        host="dpg-ct1u628gph6c73blisog-a",    # Use the host provided by Render
+        port="5432"  # Use the default port for PostgreSQL (5432)
     )
+
     cursor = conn.cursor()
     today_date = datetime.now().date()
     cursor.execute("""
