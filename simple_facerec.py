@@ -11,7 +11,7 @@ import cvzone
 
 # Configuration and model loading
 confidence = 0.8
-model = YOLO('n_version_1_3.pt')
+model = YOLO('/Users/Kenneth_Baynas/Documents/AntiSpoofingDetector-main/models/n_version_1_3.pt')
 classNames = ["fake", "real"]
 frame_resizing = 0.25
 
@@ -24,11 +24,10 @@ class SimpleFacerec:
     def connect_db(self):
         try:
             conn = psycopg2.connect(
-                dbname="new_database_name_ar1g",  # Use the database name provided by Render
-                user="new_database_name_ar1g_user",    # Use the username provided by Render
-                password="nQ5D2X3odozk3esvU2ry188rkHNL5pMK",  # Use the password provided by Render
-                host="dpg-ct1u628gph6c73blisog-a",    # Use the host provided by Render
-                port="5432"  # Use the default port for PostgreSQL (5432)
+                dbname="new_database_name",
+                user="Kenneth_Baynas", 
+                password="", 
+                host="localhost"
             )
             return conn
         except Exception as e:
@@ -72,14 +71,23 @@ class SimpleFacerec:
         face_locations = face_recognition.face_locations(rgb_small_frame)
         face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
         face_names = []
+
         for face_encoding in face_encodings:
+            # Compare the detected face encoding with known faces
             matches = face_recognition.compare_faces(self.known_face_encodings, face_encoding)
             name = "Unknown"
             face_distances = face_recognition.face_distance(self.known_face_encodings, face_encoding)
-            best_match_index = np.argmin(face_distances)
-            if matches[best_match_index]:
-                name = self.known_face_names[best_match_index]
+
+            # Find the best match and check the distance
+            if len(face_distances) > 0:
+                best_match_index = np.argmin(face_distances)
+                if matches[best_match_index]:
+                    # If the distance is within an acceptable threshold, it's considered a match
+                    if face_distances[best_match_index] < 0.6:  # This threshold can be adjusted
+                        name = self.known_face_names[best_match_index]
             face_names.append(name)
+        
+        # Adjust face locations back to the original frame size
         face_locations = np.array(face_locations)
         face_locations = face_locations / frame_resizing
         return face_locations.astype(int), face_names
@@ -89,12 +97,11 @@ def log_recognized_face(name, logged_faces_today):
     if name in logged_faces_today or name == "Unknown":
         return
     conn = psycopg2.connect(
-        dbname="new_database_name_ar1g",  # Use the database name provided by Render
-        user="new_database_name_ar1g_user",    # Use the username provided by Render
-        password="nQ5D2X3odozk3esvU2ry188rkHNL5pMK",  # Use the password provided by Render
-        host="dpg-ct1u628gph6c73blisog-a",    # Use the host provided by Render
-        port="5432"  # Use the default port for PostgreSQL (5432)
-        )
+        dbname="new_database_name", 
+        user="Kenneth_Baynas", 
+        password="", 
+        host="localhost"
+    )
     cursor = conn.cursor()
     today_date = datetime.now().date()
     cursor.execute(""" 
@@ -131,7 +138,7 @@ while True:
         boxes = r.boxes
         for box in boxes:
             x1, y1, x2, y2 = box.xyxy[0]
-            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)  # Fixed error here
             w, h = x2 - x1, y2 - y1
             conf = math.ceil((box.conf[0] * 100)) / 100
             cls = box.cls[0]

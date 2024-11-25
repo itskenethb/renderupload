@@ -71,7 +71,7 @@ def register_face():
         if first_process.returncode == 0:
             # Run the second Python script
             second_process = subprocess.Popen(
-                ['python3', '/simple_facereg.py'],
+                ['python3', 'simple_facereg.py'],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
