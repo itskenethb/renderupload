@@ -105,7 +105,7 @@ def register_face_simple():
     try:
         # Run the second script independently
         process = subprocess.Popen(
-            ['python3', '/Users/Kenneth_Baynas/Downloads/source code/simple_facereg.py'],
+            ['python3', '/simple_facereg.py'],
             stdout=subprocess.PIPE, 
             stderr=subprocess.PIPE
         )
