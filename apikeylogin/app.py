@@ -2,8 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import psycopg2
 from psycopg2 import sql
-from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from passlib.hash import sha256_crypt
 
 app = Flask(__name__)
 CORS(app)
@@ -15,10 +14,8 @@ DB_USER = 'facetwahdb_user'
 DB_PASS = 'FDmm3mM50lE91i0WFlXr4VFtyKRexoFi'
 
 API_KEYS = [
-    "U6sZ7EsPyJAcaOAgSVpT4mAZeNKOJOc7",  # API Key
+   "U6sZ7EsPyJAcaOAgSVpT4mAZeNKOJOc7",  # API Key
 ]
-
-ph = PasswordHasher()
 
 def get_db_connection():
     connection = psycopg2.connect(
@@ -40,6 +37,44 @@ def check_api_key():
     if token in API_KEYS:
         return True
     return False
+
+@app.route('/login', methods=['POST'])
+def login():
+    if not check_api_key():
+        return jsonify({"status": "error", "message": "Invalid API Key"}), 403
+
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({'status': 'error', 'message': 'Username and password are required'}), 400
+
+    connection = get_db_connection()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute(
+            "SELECT password_hash FROM users WHERE username = %s", (username,)
+        )
+        result = cursor.fetchone()
+        if not result:
+            return jsonify({'status': 'error', 'message': 'Invalid username or password'}), 400
+        
+        password_hash = result[0]
+        
+        # Verify the password
+        if not sha256_crypt.verify(password, password_hash):
+            return jsonify({'status': 'error', 'message': 'Invalid username or password'}), 400
+        
+        return jsonify({'status': 'success', 'message': 'Login successful'}), 200
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    finally:
+        cursor.close()
+        connection.close()
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -64,25 +99,29 @@ def register():
     except ValueError:
         return jsonify({'status': 'error', 'message': 'Age and Employee ID must be integers'}), 400
 
-    valid_departments = ['BRM', 'PMU', 'QA', 'TS', 'DEV']
-    if department.upper() not in valid_departments:
+    valid_departments = ['BRM and Creative Media','Project Management Unit','Quality Assurance','Technical Support','Development']
+    if department.strip().upper() not in [dept.upper() for dept in valid_departments]:
         return jsonify({'status': 'error', 'message': 'Invalid department'}), 400
 
-    connection = get_db_connection()
-    cursor = connection.cursor()
-
     try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
         cursor.execute(
             '''
-            INSERT INTO employee (name, age, department, position, address, employee_id) 
+            INSERT INTO employee (name, age, department, position, address, employee_id)
             VALUES (%s, %s, %s, %s, %s, %s)
             ''',
             (name, age, department, position, address, employee_id)
         )
         connection.commit()
+
         return jsonify({'status': 'success', 'message': 'Employee registered successfully'}), 200
+
     except psycopg2.IntegrityError:
         return jsonify({'status': 'error', 'message': 'Employee ID already exists'}), 400
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
     finally:
         cursor.close()
         connection.close()

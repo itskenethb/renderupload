@@ -24,10 +24,10 @@ class SimpleFacerec:
     def connect_db(self):
         try:
             conn = psycopg2.connect(
-                dbname="new_database_name",
-                user="Kenneth_Baynas", 
-                password="", 
-                host="localhost"
+                dbname="facetwahdb", 
+                user="facetwahdb_user", 
+                password="FDmm3mM50lE91i0WFlXr4VFtyKRexoFi", 
+                host="dpg-ct2naf3tq21c73b4s8lg-a.singapore-postgres.render.com"
             )
             return conn
         except Exception as e:
@@ -78,9 +78,6 @@ class SimpleFacerec:
             name = "Unknown"
             face_distances = face_recognition.face_distance(self.known_face_encodings, face_encoding)
 
-            # Print face distances for debugging
-            print(f"Face distances: {face_distances}")
-
             # Find the best match and check the distance
             if len(face_distances) > 0:
                 best_match_index = np.argmin(face_distances)
@@ -97,32 +94,52 @@ class SimpleFacerec:
 
 # Function to log recognized faces in the database once per day
 def log_recognized_face(name, logged_faces_today):
-    if name in logged_faces_today or name == "Unknown":
+    if name == "Unknown":
         return
-    conn = psycopg2.connect(
-        dbname="new_database_name", 
-        user="Kenneth_Baynas", 
-        password="", 
-        host="localhost"
-    )
-    cursor = conn.cursor()
-    today_date = datetime.now().date()
-    cursor.execute(""" 
-        SELECT name FROM recognized_faces
-        WHERE name = %s AND DATE(recognized_at) = %s
-    """, (name, today_date))
-    if not cursor.fetchone():
-        query = "INSERT INTO recognized_faces (name, recognized_at) VALUES (%s, %s)"
-        cursor.execute(query, (name, datetime.now()))
-        conn.commit()
-        logged_faces_today.add(name)
-    cursor.close()
-    conn.close()
+
+    try:
+        conn = psycopg2.connect(
+            dbname="facetwahdb", 
+            user="facetwahdb_user", 
+            password="FDmm3mM50lE91i0WFlXr4VFtyKRexoFi", 
+            host="dpg-ct2naf3tq21c73b4s8lg-a.singapore-postgres.render.com"
+        )
+        cursor = conn.cursor()
+
+        today_date = datetime.now().date()
+        cursor.execute(""" 
+            SELECT name, in_time, out_time FROM attendance
+            WHERE name = %s AND DATE(in_time) = %s
+        """, (name, today_date))
+
+        # Check if person already has an 'in_time' logged today
+        existing_record = cursor.fetchone()
+
+        if existing_record:
+            # If a record exists, update the 'out_time'
+            cursor.execute("""
+                UPDATE attendance 
+                SET out_time = %s 
+                WHERE name = %s AND DATE(in_time) = %s
+            """, (datetime.now(), name, today_date))
+            conn.commit()
+        else:
+            # If no record exists, insert a new attendance entry with 'in_time'
+            cursor.execute("""
+                INSERT INTO attendance (name, in_time) 
+                VALUES (%s, %s)
+            """, (name, datetime.now()))
+            conn.commit()
+
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error logging attendance: {e}")
 
 # Initialize video capture
 cap = cv2.VideoCapture(0)
-cap.set(3, 1280)
-cap.set(4, 720)
+cap.set(3, 500)
+cap.set(4, 480)
 
 # Initialize SimpleFacerec and load face encodings
 sfr = SimpleFacerec()

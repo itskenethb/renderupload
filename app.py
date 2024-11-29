@@ -7,8 +7,22 @@ import signal
 app = Flask(__name__)
 CORS(app)
 
-# Store the process objects for later termination
 current_processes = []
+
+# Define the valid API key directly in the code
+VALID_API_KEY = "U6sZ7EsPyJAcaOAgSVpT4mAZeNKOJOc7"
+
+def is_valid_api_key(api_key):
+    return api_key == VALID_API_KEY
+
+@app.before_request
+def require_api_key():
+    protected_endpoints = ['/run-script', '/stop-script', '/register-face']
+    
+    if request.path in protected_endpoints:
+        api_key = request.headers.get('X-API-Key')
+        if not api_key or not is_valid_api_key(api_key):
+            return jsonify({'status': 'error', 'message': 'Invalid or missing API key'}), 403
 
 def run_python_script(script_name, args=None):
     """Helper function to run a Python script and return its output."""
@@ -20,7 +34,7 @@ def run_python_script(script_name, args=None):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
-        current_processes.append(process)  # Store the process
+        current_processes.append(process)
         
         stdout, stderr = process.communicate()
         
@@ -69,11 +83,10 @@ def register_face():
         if not name:
             return jsonify({'status': 'error', 'message': 'Name is required'}), 400
 
-        # Run the first registration Python script
         result1 = run_python_script('simple_facereg.py', [name])
 
         if result1['status'] == 'success':
-            # Run the second registration Python script
+
             result2 = run_python_script('simple_facereg.py')
 
             if result2['status'] == 'success':
