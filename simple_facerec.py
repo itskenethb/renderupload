@@ -19,14 +19,14 @@ frame_resizing = 0.25
 class SimpleFacerec:
     def __init__(self):
         self.known_face_encodings = []
-        self.known_face_names = [] 
+        self.known_face_names = []
 
     def connect_db(self):
         try:
             conn = psycopg2.connect(
-                dbname="facetwahdb", 
-                user="facetwahdb_user", 
-                password="FDmm3mM50lE91i0WFlXr4VFtyKRexoFi", 
+                dbname="facetwahdb",
+                user="facetwahdb_user",
+                password="FDmm3mM50lE91i0WFlXr4VFtyKRexoFi",
                 host="dpg-ct2naf3tq21c73b4s8lg-a.singapore-postgres.render.com"
             )
             return conn
@@ -67,7 +67,7 @@ class SimpleFacerec:
             img_encoding = face_recognition.face_encodings(rgb_img)[0]
             self.known_face_encodings.append(img_encoding)
             self.known_face_names.append(filename)
-            person_id = self.insert_face_encoding(filename, img_encoding)  # Insert and get person ID
+            self.insert_face_encoding(filename, img_encoding)  # Insert encoding into the database
         print("Encoding images loaded")
 
     def detect_known_faces(self, frame):
@@ -78,65 +78,53 @@ class SimpleFacerec:
         face_names = []
 
         for face_encoding in face_encodings:
-            # Compare the detected face encoding with known faces
             matches = face_recognition.compare_faces(self.known_face_encodings, face_encoding)
             name = "Unknown"
             face_distances = face_recognition.face_distance(self.known_face_encodings, face_encoding)
 
-            # Find the best match and check the distance
             if len(face_distances) > 0:
                 best_match_index = np.argmin(face_distances)
-                if matches[best_match_index]:
-                    # If the distance is within an acceptable threshold, it's considered a match
-                    if face_distances[best_match_index] < 0.5:  # Lower the threshold
-                        name = self.known_face_names[best_match_index]
+                if matches[best_match_index] and face_distances[best_match_index] < 0.5:
+                    name = self.known_face_names[best_match_index]
             face_names.append(name)
-        
-        # Adjust face locations back to the original frame size
-        face_locations = np.array(face_locations)
-        face_locations = face_locations / frame_resizing
+
+        face_locations = np.array(face_locations) / frame_resizing
         return face_locations.astype(int), face_names
 
-# Function to log attendance (directly in the attendance table)
+# Function to log attendance
 def log_attendance(name):
     if name == "Unknown":
         return
-
     try:
         conn = psycopg2.connect(
-            dbname="facetwahdb", 
-            user="facetwahdb_user", 
-            password="FDmm3mM50lE91i0WFlXr4VFtyKRexoFi", 
+            dbname="facetwahdb",
+            user="facetwahdb_user",
+            password="FDmm3mM50lE91i0WFlXr4VFtyKRexoFi",
             host="dpg-ct2naf3tq21c73b4s8lg-a.singapore-postgres.render.com"
         )
         cursor = conn.cursor()
 
         today_date = datetime.now().date()
-        cursor.execute(""" 
+        cursor.execute("""
             SELECT id, in_time, out_time FROM attendance
             WHERE name = %s AND DATE(in_time) = %s
         """, (name, today_date))
 
-        # Check if person already has an 'in_time' logged today
         existing_record = cursor.fetchone()
-
         if existing_record:
-            # If a record exists, update the 'out_time'
             cursor.execute("""
-                UPDATE attendance 
-                SET out_time = %s 
+                UPDATE attendance
+                SET out_time = %s
                 WHERE name = %s AND DATE(in_time) = %s
             """, (datetime.now(), name, today_date))
             conn.commit()
         else:
-            # Get the person's id from the `face_encodings` table based on the name
             cursor.execute("SELECT id FROM face_encodings WHERE name = %s", (name,))
             person_id = cursor.fetchone()
             if person_id:
                 person_id = person_id[0]
-                # If no record exists, insert a new attendance entry with 'in_time'
                 cursor.execute("""
-                    INSERT INTO attendance (name, in_time, id) 
+                    INSERT INTO attendance (name, in_time, id)
                     VALUES (%s, %s, %s)
                 """, (name, datetime.now(), person_id))
                 conn.commit()
@@ -153,24 +141,19 @@ cap.set(4, 480)
 
 # Initialize SimpleFacerec and load face encodings
 sfr = SimpleFacerec()
-sfr.load_encoding_images("images/")  # Folder with encoding images
+sfr.load_encoding_images("images/")
 
-# Initialize list to track label positions to prevent overlap
-label_positions = []
-
-# Start main loop
 while True:
     ret, frame = cap.read()
     if not ret:
         break
 
-    # Perform object detection using YOLO
     results = model(frame, stream=True, verbose=False)
     for r in results:
         boxes = r.boxes
         for box in boxes:
             x1, y1, x2, y2 = box.xyxy[0]
-            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)  # Fixed error here
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
             w, h = x2 - x1, y2 - y1
             conf = math.ceil((box.conf[0] * 100)) / 100
             cls = box.cls[0]
@@ -178,32 +161,19 @@ while True:
 
             if conf > confidence:
                 color = (0, 255, 0) if name == "REAL" else (0, 0, 255)
-                # Position the cornerRect slightly above the bounding box to prevent overlap
                 cvzone.cornerRect(frame, (x1, y1, w, h), colorC=color, colorR=color)
+                label_y_position = max(35, y1 - 50)
+                cvzone.putTextRect(frame, f'{name} {int(conf*100)}%', (max(0, x1), label_y_position), scale=2, thickness=2, colorR=color)
 
-                # Increase y_offset to adjust the position higher above the bounding box
-                label_y_position = max(35, y1 - 50)  # Moved 30 pixels above the bounding box
-                label_text = f'{name} {int(conf*100)}%'
-                cvzone.putTextRect(frame, label_text, (max(0, x1), label_y_position), scale=2, thickness=2, colorR=color, colorB=color)
-
-                # Only log the face if it is "real"
                 if name == "REAL":
-                    # Detect known faces for recognition
                     face_locations, face_names = sfr.detect_known_faces(frame)
                     for face_loc, face_name in zip(face_locations, face_names):
-                        # Adjust label_y_position to avoid overlapping with previous labels
-                        while label_y_position in label_positions:
-                            label_y_position -= 30  # Move the label 30 pixels up until it's free
-                        label_positions.append(label_y_position)
+                        top, right, bottom, left = face_loc
+                        cv2.rectangle(frame, (left, top), (right, bottom), (255, 0, 0), 2)
+                        cvzone.putTextRect(frame, face_name, (left, top - 10), scale=2, thickness=2, colorR=(255, 0, 0))
+                        log_attendance(face_name)
 
-                        # Log attendance if face is recognized
-                        if face_name != "Unknown":
-                            log_attendance(face_name)
-
-    # Display the frame
     cv2.imshow("Attendance System", frame)
-
-    # Break loop if the user presses 'q'
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
