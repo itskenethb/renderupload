@@ -36,20 +36,25 @@ class SimpleFacerec:
 
     def insert_face_encoding(self, name, encoding):
         conn = self.connect_db()
+        person_id = None
         if conn:
             try:
                 cursor = conn.cursor()
-                cursor.execute("SELECT name FROM face_encodings WHERE name = %s", (name,))
+                cursor.execute("SELECT id FROM face_encodings WHERE name = %s", (name,))
                 existing_name = cursor.fetchone()
                 if not existing_name:
-                    query = "INSERT INTO face_encodings (name, encoding) VALUES (%s, %s)"
+                    query = "INSERT INTO face_encodings (name, encoding) VALUES (%s, %s) RETURNING id"
                     cursor.execute(query, (name, encoding.tobytes()))
+                    person_id = cursor.fetchone()[0]  # Get the inserted person's id
                     conn.commit()
+                else:
+                    person_id = existing_name[0]  # Use existing person's id if the name already exists
             except Exception as e:
                 print(f"Error inserting encoding: {e}")
             finally:
                 cursor.close()
                 conn.close()
+        return person_id
 
     def load_encoding_images(self, images_path):
         images_path = glob.glob(os.path.join(images_path, "*.*"))
@@ -62,7 +67,7 @@ class SimpleFacerec:
             img_encoding = face_recognition.face_encodings(rgb_img)[0]
             self.known_face_encodings.append(img_encoding)
             self.known_face_names.append(filename)
-            self.insert_face_encoding(filename, img_encoding)
+            person_id = self.insert_face_encoding(filename, img_encoding)  # Insert and get person ID
         print("Encoding images loaded")
 
     def detect_known_faces(self, frame):
@@ -92,8 +97,8 @@ class SimpleFacerec:
         face_locations = face_locations / frame_resizing
         return face_locations.astype(int), face_names
 
-# Function to log recognized faces in the database once per day
-def log_recognized_face(name, logged_faces_today):
+# Function to log attendance (directly in the attendance table)
+def log_attendance(name):
     if name == "Unknown":
         return
 
@@ -108,7 +113,7 @@ def log_recognized_face(name, logged_faces_today):
 
         today_date = datetime.now().date()
         cursor.execute(""" 
-            SELECT name, in_time, out_time FROM attendance
+            SELECT id, in_time, out_time FROM attendance
             WHERE name = %s AND DATE(in_time) = %s
         """, (name, today_date))
 
@@ -124,12 +129,17 @@ def log_recognized_face(name, logged_faces_today):
             """, (datetime.now(), name, today_date))
             conn.commit()
         else:
-            # If no record exists, insert a new attendance entry with 'in_time'
-            cursor.execute("""
-                INSERT INTO attendance (name, in_time) 
-                VALUES (%s, %s)
-            """, (name, datetime.now()))
-            conn.commit()
+            # Get the person's id from the `face_encodings` table based on the name
+            cursor.execute("SELECT id FROM face_encodings WHERE name = %s", (name,))
+            person_id = cursor.fetchone()
+            if person_id:
+                person_id = person_id[0]
+                # If no record exists, insert a new attendance entry with 'in_time'
+                cursor.execute("""
+                    INSERT INTO attendance (name, in_time, id) 
+                    VALUES (%s, %s, %s)
+                """, (name, datetime.now(), person_id))
+                conn.commit()
 
         cursor.close()
         conn.close()
@@ -144,7 +154,6 @@ cap.set(4, 480)
 # Initialize SimpleFacerec and load face encodings
 sfr = SimpleFacerec()
 sfr.load_encoding_images("images/")  # Folder with encoding images
-logged_faces_today = set()
 
 # Initialize list to track label positions to prevent overlap
 label_positions = []
@@ -187,20 +196,15 @@ while True:
                             label_y_position -= 30  # Move the label 30 pixels up until it's free
                         label_positions.append(label_y_position)
 
-                        # Display "Unknown" for faces not recognized
-                        if face_name == "Unknown":
-                            cv2.putText(frame, "Unknown", (x1, y1 - 10), cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 255), 2)
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 4)
-                        else:
-                            log_recognized_face(face_name, logged_faces_today)
-                            cv2.putText(frame, face_name, (x1, y1 - 10), cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 200), 2)
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 200), 4)
+                        # Log attendance if face is recognized
+                        if face_name != "Unknown":
+                            log_attendance(face_name)
 
     # Display the frame
-    cv2.imshow("Frame", frame)
+    cv2.imshow("Attendance System", frame)
 
-    # Break on ESC key press
-    if cv2.waitKey(1) & 0xFF == 27:
+    # Break loop if the user presses 'q'
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
 cap.release()
