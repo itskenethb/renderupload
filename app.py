@@ -73,38 +73,36 @@ def stop_script():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-@app.route('/register-face', methods=['POST'])
+@app.route('/register', methods=['POST'])
 def register_face():
-    """Endpoint to register a face, run two Python scripts in sequence."""
+    """Endpoint to register a face, run the registration script."""
     try:
+        # Extract the data from the request
         data = request.json
         name = data.get('name', '')
+        age = data.get('age', '')
+        department = data.get('department', '')
+        position = data.get('position', '')
+        address = data.get('address', '')
+        employee_id = data.get('employee_id', '')
 
-        if not name:
-            return jsonify({'status': 'error', 'message': 'Name is required'}), 400
+        # Validate inputs
+        if not all([name, age, department, position, address, employee_id]):
+            return jsonify({'status': 'error', 'message': 'All fields are required'}), 400
 
-        result1 = run_python_script('simple_facereg.py', [name])
+        # Run the registration script with the provided name and other details
+        result = run_python_script('reg.py', [name, age, department, position, address, employee_id])
 
-        if result1['status'] == 'success':
-
-            result2 = run_python_script('simple_facereg.py')
-
-            if result2['status'] == 'success':
-                return jsonify({
-                    'status': 'success',
-                    'output': f"First script output: {result1['output']}\nSecond script output: {result2['output']}"
-                })
-            else:
-                return jsonify({
-                    'status': 'error',
-                    'message': 'First script succeeded but second script failed',
-                    'output': result2['output']
-                }), 400
+        if result['status'] == 'success':
+            return jsonify({
+                'status': 'success',
+                'output': f"Face registration script output: {result['output']}"
+            })
         else:
             return jsonify({
                 'status': 'error',
-                'message': 'First script failed',
-                'output': result1['output']
+                'message': 'Registration script failed',
+                'output': result['output']
             }), 400
 
     except Exception as e:

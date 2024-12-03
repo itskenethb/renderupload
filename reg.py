@@ -6,6 +6,7 @@ import face_recognition
 import sys
 from ultralytics import YOLO
 import math
+from datetime import datetime
 
 class SimpleFacerec:
     def __init__(self):
@@ -57,14 +58,17 @@ class SimpleFacerec:
                 return False
         return False
 
-    def insert_face_encoding(self, name, encoding):
+    def insert_face_encoding(self, name, encoding, age, department, position, address, employee_id):
         conn = self.connect_db()
         if conn:
             try:
                 cursor = conn.cursor()
-                # Insert encoding if it doesn't already exist
-                query = "INSERT INTO face_encodings (name, encoding) VALUES (%s, %s)"
-                cursor.execute(query, (name, encoding.tobytes()))
+                # Insert encoding and additional data if it doesn't already exist
+                query = """
+                    INSERT INTO face_encodings (name, encoding, age, department, position, address, employee_id, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                cursor.execute(query, (name, encoding.tobytes(), age, department, position, address, employee_id, datetime.now()))
                 conn.commit()
                 print(f"Face encoding for {name} added to the database.")
             except Exception as e:
@@ -73,7 +77,7 @@ class SimpleFacerec:
                 cursor.close()
                 conn.close()
 
-    def capture_and_register_face(self, name):
+    def capture_and_register_face(self, name, age, department, position, address, employee_id):
         # Check if the face image or encoding already exists
         if self.check_existing_face(name):
             return
@@ -106,62 +110,38 @@ class SimpleFacerec:
                 for box in boxes:
                     x1, y1, x2, y2 = box.xyxy[0]
                     x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                    conf = math.ceil((box.conf[0] * 100)) / 100
-                    cls = box.cls[0]
-                    name_detected = self.classNames[int(cls)].upper()
+                    conf = box.conf[0].item()
 
-                    if conf > 0.8:  # Confidence threshold for detection
-                        if name_detected == "FAKE":
-                            print("Fake face detected. Skipping registration.")
-                            cap.release()
-                            cv2.destroyAllWindows()
-                            return  # Skip registration if fake face is detected
-                        elif name_detected == "REAL":
-                            real_face_count += 1  # Count how many frames show a "real" face
-                            is_real_face = True
-                            print(f"Real face detected with confidence {conf}. Frame count: {real_face_count}")
+                    # If confidence is above a threshold, classify the face as real
+                    if conf > 0.5:
+                        is_real_face = True
+                        break
 
-            # If we detect multiple consecutive frames with real faces, proceed with registration
-            if is_real_face and real_face_count > 5:  # 5 consecutive frames of real faces
-                if face_encodings:
-                    # Assume first detected face is the intended face
-                    encoding = face_encodings[0]
-                    # Scale back face locations to full size
-                    y1, x2, y2, x1 = [int(coord / self.frame_resizing) for coord in face_locations[0]]
+            if is_real_face:
+                real_face_count += 1
 
-                    # Save image to /images folder
-                    img_path = os.path.join(self.images_folder, f"{name}.jpg")
-                    cv2.imwrite(img_path, frame[y1:y2, x1:x2])
-                    print(f"Face image saved at {img_path}")
-
-                    # Store encoding in the database
-                    self.insert_face_encoding(name, encoding)
-                    print(f"Face registered for {name}.")
-                    captured = True
-
-                    # Display confirmation on screen
-                    cv2.putText(frame, "Face Registered", (x1, y1 - 10), cv2.FONT_HERSHEY_DUPLEX, 1, (0, 255, 0), 2)
-                    cv2.imshow("Frame", frame)
-                    cv2.waitKey(1000)  # Pause for confirmation display
-
-            # Display the live feed
-            cv2.imshow("Frame", frame)
-            if cv2.waitKey(1) == 27:  # Press ESC to exit capture
-                break
-
+            if face_encodings and real_face_count > 3:  # We captured enough real faces
+                encoding = face_encodings[0]
+                img_path = os.path.join(self.images_folder, f"{name}.jpg")
+                cv2.imwrite(img_path, frame)  # Save captured image to file
+                self.insert_face_encoding(name, encoding, age, department, position, address, employee_id)
+                captured = True
             frame_count += 1
-            if frame_count > 50:  # After 50 frames, exit if registration is not completed
-                print("No valid real face detected after multiple frames. Exiting.")
+            cv2.imshow('Register Face', frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
         cap.release()
         cv2.destroyAllWindows()
 
-# Main registration process
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        name = sys.argv[1]  # Get the name from command-line argument
-        sfr = SimpleFacerec()
-        sfr.capture_and_register_face(name)
-    else:
-        print("Please provide a name as a command-line argument.")
+    # Read command-line arguments
+    name = sys.argv[1]
+    age = sys.argv[2]
+    department = sys.argv[3]
+    position = sys.argv[4]
+    address = sys.argv[5]
+    employee_id = sys.argv[6]
+
+    facerec = SimpleFacerec()
+    facerec.capture_and_register_face(name, age, department, position, address, employee_id)
