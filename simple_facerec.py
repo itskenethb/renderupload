@@ -104,7 +104,10 @@ def log_attendance(name):
         )
         cursor = conn.cursor()
 
-        today_date = datetime.now().date()
+        current_time = datetime.now()
+        today_date = current_time.date()
+
+        # Check if the person has already logged attendance today
         cursor.execute("""
             SELECT id, in_time, out_time FROM attendance
             WHERE name = %s AND DATE(in_time) = %s
@@ -112,21 +115,28 @@ def log_attendance(name):
 
         existing_record = cursor.fetchone()
         if existing_record:
+            # Update out_time if the record exists
             cursor.execute("""
                 UPDATE attendance
                 SET out_time = %s
                 WHERE name = %s AND DATE(in_time) = %s
-            """, (datetime.now(), name, today_date))
+            """, (current_time, name, today_date))
             conn.commit()
         else:
+            # Determine remarks based on in_time
+            in_time = current_time.time()
+            cutoff_time = datetime.strptime("08:00:00", "%H:%M:%S").time()
+            remarks = "on time" if in_time <= cutoff_time else "late"
+
+            # Insert a new attendance record with remarks
             cursor.execute("SELECT id FROM face_encodings WHERE name = %s", (name,))
             person_id = cursor.fetchone()
             if person_id:
                 person_id = person_id[0]
                 cursor.execute("""
-                    INSERT INTO attendance (name, in_time, id)
-                    VALUES (%s, %s, %s)
-                """, (name, datetime.now(), person_id))
+                    INSERT INTO attendance (name, in_time, id, remarks)
+                    VALUES (%s, %s, %s, %s)
+                """, (name, current_time, person_id, remarks))
                 conn.commit()
 
         cursor.close()

@@ -117,8 +117,11 @@ class SimpleFacerec:
                         is_real_face = True
                         break
 
+            # Track the consistency of real face detections
             if is_real_face:
                 real_face_count += 1
+            else:
+                real_face_count = 0  # Reset if a fake face is detected
 
             if face_encodings and real_face_count > 3:  # We captured enough real faces
                 encoding = face_encodings[0]
@@ -126,6 +129,10 @@ class SimpleFacerec:
                 cv2.imwrite(img_path, frame)  # Save captured image to file
                 self.insert_face_encoding(name, encoding, age, department, position, address, employee_id)
                 captured = True
+            elif real_face_count == 0:
+                print("Fake face detected, registration aborted.")
+                break
+
             frame_count += 1
             cv2.imshow('Register Face', frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
